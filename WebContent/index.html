@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Resumable.js - Multiple simultaneous, stable and resumable uploads via the HTML5 File API</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" type="text/css" href="style.css" />
+  </head>
+  <body>
+    <div id="frame">
+
+      <h1>Resumable.js</h1>
+      <p>It's a JavaScript library providing multiple simultaneous, stable and resumable uploads via the HTML5 File API.</p>
+
+      <p>The library is designed to introduce fault-tolerance into the upload of large files through HTTP. This is done by splitting each files into small chunks; whenever the upload of a chunk fails, uploading is retried until the procedure completes. This allows uploads to automatically resume uploading after a network connection is lost either locally or to the server. Additionally, it allows for users to pause and resume uploads without loosing state.</p>
+
+      <p>Resumable.js relies on the HTML5 File API and the ability to chunks files into smaller pieces. Currently, this means that support is limited to Firefox 4+ and Chrome 11+.</p>
+
+      <hr/>
+
+      <h3>Demo</h3>
+      <script src="jquery.min.js"></script>
+      <script src="resumable.js"></script>
+
+      <div class="resumable-error">
+        Your browser, unfortunately, is not supported by Resumable.js. The library requires support for <a href="http://www.w3.org/TR/FileAPI/">the HTML5 File API</a> along with <a href="http://www.w3.org/TR/FileAPI/#normalization-of-params">file slicing</a>.
+      </div>
+
+      <div class="resumable-drop" ondragenter="jQuery(this).addClass('resumable-dragover');" ondragend="jQuery(this).removeClass('resumable-dragover');" ondrop="jQuery(this).removeClass('resumable-dragover');">
+        Drop video files here to upload or <a class="resumable-browse"><u>select from your computer</u></a>
+      </div>
+      
+      <div class="resumable-progress">
+        <table>
+          <tr>
+            <td width="100%"><div class="progress-container"><div class="progress-bar"></div></div></td>
+            <td class="progress-text" nowrap="nowrap"></td>
+            <td class="progress-pause" nowrap="nowrap">
+              <a href="#"  class="progress-resume-link" id="continue" ><img src="resume.png" title="Resume upload" /></a>
+              <a href="#"  class="progress-pause-link" id="stop" ><img src="pause.png" title="Pause upload" /></a>
+            </td>
+          </tr>
+        </table>
+      </div>
+      
+      <ul class="resumable-list"></ul>
+
+      <script>
+      $(document).ready(function(){
+    	  var date;
+    	  function getStillTime(time){
+    		  if(time==Infinity)return '未知';
+    		  var time1 = Math.ceil(time);
+          	  var hour = Math.floor(time1/3600);
+          	  var hour1 = hour>=10?hour:'0'+hour;
+          	  var min = Math.floor((time1-hour*3600)/60);
+              var min1 = min>=10?min:'0'+min;
+          	  var sec = time1-hour*3600-min*60;
+          	  var sec1= sec>=10?sec:'0'+sec;
+          	  var still = hour1+':'+min1+':'+sec1;
+          	  return still;
+    	  }
+    	  $("#stop").on("click",function(event){
+    		  r.pause();
+    		  event.preventDefault();
+    	  })
+    	  $("#continue").on("click",function(event){
+    		  r.upload();
+    		  event.preventDefault();
+    	  });
+	        var r = new Resumable({
+	            target:'/java-resumable/upload',
+	            chunkSize:1*1024*1024,
+	            simultaneousUploads:4,
+	            testChunks: true,
+	            maxFiles:10,
+	            throttleProgressCallbacks:1,
+	            method: "octet"
+	          });
+	        // Resumable.js isn't supported, fall back on a different method
+	        if(!r.support) {
+	          $('.resumable-error').show();
+	        } else {
+	          // Show a place for dropping/selecting files
+	          $('.resumable-drop').show();
+	          r.assignDrop($('.resumable-drop')[0]);
+	          r.assignBrowse($('.resumable-browse')[0]);
+	
+	          // Handle file add event
+	          r.on('fileAdded', function(file){
+	        	  date = new Date();
+	              // Show progress pabr
+	              var li = $(".resumable-list").find("li");
+	              var pro = $(".resumable-progress").find("table");
+		              $('.resumable-progress, .resumable-list').show();
+		              // Show pause, hide resume
+		              $('.resumable-progress .progress-resume-link').hide();
+		              $('.resumable-progress .progress-pause-link').show();
+		              // Add the file to the list
+		              if((typeof file.uniqueIdentifier)!='undefined'){
+			              $('.resumable-list').append('<li class="resumable-file-'+file.uniqueIdentifier+'">Uploading <span class="resumable-file-name"></span> <span class="resumable-file-progress tt"></span></li>');
+			              $('.resumable-file-'+file.uniqueIdentifier+' .resumable-file-name').html(file.fileName);
+			              pro.append('<tr><td width="100%"><div class="progress-container"><div class="progress-bar-'+file.uniqueIdentifier+'"></div></div></td><td class="progress-text" nowrap="nowrap"></td><td class="progress-pause" nowrap="nowrap"><a href="#"  class="progress-resume-link-'+file.uniqueIdentifier+'" id="continue-'+file.uniqueIdentifier+'" ><img src="resume.png" title="Resume upload" /></a><a href="#"  class="progress-pause-link-'+file.uniqueIdentifier+'" id="stop-'+file.uniqueIdentifier+'" ><img src="pause.png" title="Pause upload" /></a><a id="cancel-'+file.uniqueIdentifier+'">取消</a></td></tr>')
+			              $('.resumable-progress .progress-resume-link-'+file.uniqueIdentifier).hide();
+		              	  $('.resumable-progress .progress-pause-link-'+file.uniqueIdentifier).show();
+			              var files = r.files;
+			              for(var j=0;j<files.length;j++){
+			            	  var temp = files[j];
+				              $("#stop-"+temp.uniqueIdentifier).on("click",function(event){
+				            	  temp.abort();
+				            	  $(this).hide();
+				            	  $(this).siblings("a").show();
+								  $(".progress-bar-"+temp.uniqueIdentifier).css("background","#FFFF00");
+								  $(".progress-bar").css("background","#FFFF00");
+								  event.preventDefault();
+				              });
+				              $("#cancel-"+temp.uniqueIdentifier).on("click",function(event){
+				            	  temp.cancel();
+				            	  $(".progress-bar-"+temp.uniqueIdentifier).css("display","none");
+				            	  event.preventDefault(); 
+				              });
+							  $("#continue-"+temp.uniqueIdentifier).on("click",function(event){
+								  temp.retry();//TODO此处问题重新继续上传发现进度重新开始
+					              $(this).hide();
+				            	  $(this).siblings("a").show();
+								  $(".progress-bar-"+temp.uniqueIdentifier).css("background","#45913A");
+								  $(".progress-bar").css("background","#45913A");
+								  event.preventDefault();
+				              });
+			              }
+		              }else{
+			              $('.resumable-list').append('<li class="tongji">Uploading <span class="resumable-file-name"></span> <span class="resumable-file-progress"></span><span class="resumable-file-text-progress"></span></li>');
+			              $('.tongji .resumable-file-name').html('总共');
+		              }
+		              // Actually start the upload
+		              r.upload();
+	            });
+	          r.on('pause', function(){
+	              // Show resume, hide pause
+	              $('.resumable-progress .progress-resume-link').show();
+	              $('.resumable-progress .progress-pause-link').hide();
+	              $(".progress-bar").css("background","#FFFF00");
+	            });
+	          r.on('continue', function(){
+	              // Show resume, hide pause
+	              $('.resumable-progress .progress-resume-link').hide();
+	              $('.resumable-progress .progress-pause-link').show();
+	              $(".progress-bar").css("background","#45913A");
+	            });
+	          r.on('complete', function(){
+	              // Hide pause/resume when the upload has completed
+	              $('.resumable-progress .progress-resume-link, .resumable-progress .progress-pause-link').hide();
+	            });
+	          r.on('fileSuccess', function(file,message){
+	              // Reflect that the file upload has completed
+	            });
+	          r.on('fileError', function(file, message){
+	              // Reflect that the file upload has resulted in error
+	              $('.resumable-file-'+file.uniqueIdentifier+' .resumable-file-progress').html('(file could not be uploaded: '+message+')');
+	            });
+	          r.on('fileProgress', function(file){
+	              // Handle progress for both the file and the overall upload
+	              var files = r.files,t = '',pro;//此处file参数不是实际上传过程中的file参数，而是多个上传文件对象中最后一个文件参数
+	              for(var m=0;m<files.length;m++){
+		              pro = $('.resumable-file-'+files[m].uniqueIdentifier+' .resumable-file-progress');
+		              var aa = 1-files[m].progress();//剩余进度
+		              var t = (aa>1?0:aa)*files[m].size;//剩余大小
+	          		  var time = aa==1?Infinity:(t*(new Date()-date)/(files[m].progress()*files[m].size*1000));//剩余时间=未上传的/速度
+	          		  var speed = aa>0?(t/time):0;
+	          		  var still = getStillTime(time);//剩余时间转化为格式化时间表示
+		              pro.html(Math.floor(files[m].progress()*100) + '%'+' '+r.formatSize((files[m].progress()>=1?1:files[m].progress())*files[m].size)+'/'+r.formatSize(files[m].size)+' 速度:'+r.formatSize(speed)+'/s'+' 还需用时:'+still);
+		              $('.progress-bar-'+files[m].uniqueIdentifier).css({width:Math.floor(files[m].progress()*100) + '%'});
+	              }
+	              $('.tongji .resumable-file-progress').html(Math.floor(r.progress()*100) + '%');
+	              $('.progress-bar').css({width:Math.floor(r.progress()*100) + '%'});
+	            });
+	        }
+      });
+      </script>
+
+    </div>
+  </body>
+</html>
+
+
+    
